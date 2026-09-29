@@ -1,0 +1,24 @@
+# ServiceNow Kafka Connector
+> Open-source (Apache-2.0) ServiceNow connectors for Apache Kafka Connect: a keyset-polling Table API source with historical backfill, and a Table API CRUD sink with reporters and a dead letter queue. The open-source alternative to Confluent's proprietary ServiceNow connectors, by OSO.
+
+## Core Documentation
+- [Introduction](https://servicenowkafkaconnector.com/): what the connectors are and when to use each
+- [Getting Started](https://servicenowkafkaconnector.com/getting-started): installation and ServiceNow integration user / OAuth setup
+- [Quickstart](https://servicenowkafkaconnector.com/getting-started/quickstart): docker compose walkthrough with the bundled fake ServiceNow
+
+## Connectors
+- [Source Connector](https://servicenowkafkaconnector.com/connectors/source): ServiceNow to Kafka - backfill plus continuous keyset polling on sys_updated_on and sys_id, multi-table, at-least-once
+- [Sink Connector](https://servicenowkafkaconnector.com/connectors/sink): Kafka to ServiceNow - create/patch/put/delete, per-partition ordering, ambiguous-write policies, reporters, DLQ
+
+## Concepts & Operations
+- [Architecture](https://servicenowkafkaconnector.com/concepts/architecture)
+- [Delivery Semantics](https://servicenowkafkaconnector.com/concepts/delivery-semantics): at-least-once, dedup bound, ordering
+- [Offsets & Recovery](https://servicenowkafkaconnector.com/concepts/offsets-and-recovery): cursor tuples, query fingerprints, offset resets
+- [Rate Limits](https://servicenowkafkaconnector.com/concepts/rate-limits): Retry-After, backoff, concurrency caps
+
+## Migration
+- [Migrating from Confluent](https://servicenowkafkaconnector.com/migration/confluent): config translation script, zero-loss cutover, verifiable evidence
+
+## Project
+- [GitHub](https://github.com/osodevops/kafka-connect-servicenow-oss)
+- [Maven Central](https://central.sonatype.com/namespace/sh.oso): groupId sh.oso

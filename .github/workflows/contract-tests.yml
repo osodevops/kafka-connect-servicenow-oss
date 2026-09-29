@@ -1,0 +1,46 @@
+name: Contract Tests (ServiceNow instance)
+
+# Runs the *ContractIT tests against a real ServiceNow instance (a Personal Developer
+# Instance is enough). Never runs on pull requests: the secrets live in the
+# `servicenow-pdi` environment, which requires a reviewer to approve each run.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    environment: servicenow-pdi
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Run contract tests
+        env:
+          SNOW_URL: ${{ secrets.SNOW_URL }}
+          SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
+          SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+          SNOW_OAUTH_CLIENT_ID: ${{ secrets.SNOW_OAUTH_CLIENT_ID }}
+          SNOW_OAUTH_CLIENT_SECRET: ${{ secrets.SNOW_OAUTH_CLIENT_SECRET }}
+        run: >-
+          mvn verify --batch-mode --no-transfer-progress
+          -Pcontract -DskipE2E -DskipUnitTests=true
+
+      - name: Upload contract test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-reports
+          path: '**/target/failsafe-reports/*.xml'
+          retention-days: 30

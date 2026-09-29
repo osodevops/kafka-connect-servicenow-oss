@@ -1,0 +1,31 @@
+name: Soak Tests
+
+# Weekly 1M-row backfill of the source connector against the fake ServiceNow in a
+# 256 MB heap, proving bounded memory. Too slow for every pull request.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 3 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Run soak tests
+        run: >-
+          mvn verify --batch-mode --no-transfer-progress
+          -Psoak -DskipE2E -DskipUnitTests=true
+          -pl connect-servicenow-source -am
