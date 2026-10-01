@@ -183,7 +183,7 @@ final class TableApiTransformer implements ResponseDefinitionTransformerV2 {
                     requestId);
         }
         if (faults.takeUnauthorized()) {
-            return error(401, "User Not Authenticated", "Injected 401", requestId);
+            return closing(error(401, "User Not Authenticated", "Injected 401", requestId));
         }
         if (!PathSegments.isTable(table)) {
             return error(400, "Invalid table " + table, null, requestId);
@@ -202,14 +202,17 @@ final class TableApiTransformer implements ResponseDefinitionTransformerV2 {
         if (rateLimit.isPresent()) {
             return json(429, errorBody("Too many requests", "Rate limit exceeded"), requestId)
                     .withHeader("Retry-After", Long.toString(rateLimit.get().toSeconds()))
+                    .withHeader("Connection", "close")
                     .build();
         }
         OptionalInt serverError = faults.takeServerError();
         if (serverError.isPresent()) {
-            return error(serverError.getAsInt(), "Injected server error", null, requestId);
+            return closing(error(serverError.getAsInt(), "Injected server error", null, requestId));
         }
         if (faults.takeMalformedJson()) {
-            return json(200, "{\"result\": [{\"sys_id\": \"abc", requestId).build();
+            return json(200, "{\"result\": [{\"sys_id\": \"abc", requestId)
+                    .withHeader("Connection", "close")
+                    .build();
         }
         if (faults.takeTruncatedBody()) {
             return ResponseDefinitionBuilder.responseDefinition()
@@ -500,6 +503,18 @@ final class TableApiTransformer implements ResponseDefinitionTransformerV2 {
 
     private ResponseDefinition error(int status, String message, String detail, String requestId) {
         return json(status, errorBody(message, detail), requestId).build();
+    }
+
+    /**
+     * Re-issues an injected fault with {@code Connection: close}, so the client never re-sends the
+     * retry on a keep-alive socket the server may already have dropped after the fault. This keeps
+     * the retry tests deterministic: every retry after a fault opens a fresh connection.
+     */
+    private static ResponseDefinition closing(ResponseDefinition fault) {
+        return ResponseDefinitionBuilder.like(fault)
+                .but()
+                .withHeader("Connection", "close")
+                .build();
     }
 
     private static String errorBody(String message, String detail) {

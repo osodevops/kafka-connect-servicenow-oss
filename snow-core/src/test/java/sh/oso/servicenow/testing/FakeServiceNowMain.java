@@ -1,13 +1,34 @@
 package sh.oso.servicenow.testing;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Runs the fake as a standalone process for {@code docker compose --profile fake}: {@code --port
- * 8090} (default), seeded with 25 {@code incident} rows. Blocks until killed.
+ * 8090} (default), seeded with 25 {@code incident} rows plus the {@code sys_db_object} and {@code
+ * sys_dictionary} rows that describe the table, so the sink's default {@code
+ * snow.sink.unknown.field.behavior=fail} can look the dictionary up. Blocks until killed.
  */
 public final class FakeServiceNowMain {
+
+    /** Columns the fake declares for {@code incident} in {@code sys_dictionary}. */
+    public static final List<String> INCIDENT_COLUMNS =
+            List.of(
+                    "sys_id",
+                    "sys_created_on",
+                    "sys_updated_on",
+                    "sys_mod_count",
+                    "number",
+                    "short_description",
+                    "description",
+                    "state",
+                    "priority",
+                    "category",
+                    "caller_id",
+                    "assigned_to",
+                    "correlation_id",
+                    "u_external_ref");
 
     private FakeServiceNowMain() {}
 
@@ -19,6 +40,7 @@ public final class FakeServiceNowMain {
             }
         }
         MockServiceNowServer server = MockServiceNowServer.start(port);
+        seedDictionary(server, "incident", INCIDENT_COLUMNS);
         seedIncidents(server, 25);
         System.out.println(
                 "Fake ServiceNow listening on "
@@ -31,9 +53,24 @@ public final class FakeServiceNowMain {
                         + MockServiceNowServer.CLIENT_ID
                         + "), "
                         + server.tables().size("incident")
-                        + " incident rows seeded");
+                        + " incident rows seeded, "
+                        + server.tables().size("sys_dictionary")
+                        + " dictionary rows");
         Runtime.getRuntime().addShutdownHook(new Thread(server::close));
         Thread.currentThread().join();
+    }
+
+    /**
+     * Registers {@code table} (no super class) in {@code sys_db_object} and one {@code
+     * sys_dictionary} row per column, in the shape {@code TableMetadataClient} reads.
+     */
+    public static void seedDictionary(
+            MockServiceNowServer server, String table, List<String> columns) {
+        TableStore t = server.tables();
+        t.insert("sys_db_object", Map.of("name", table, "super_class", ""));
+        for (String column : columns) {
+            t.insert("sys_dictionary", Map.of("name", table, "element", column));
+        }
     }
 
     /** Seeds {@code count} incident rows with sequential numbers and states. */

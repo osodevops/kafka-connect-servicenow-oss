@@ -24,6 +24,7 @@ import sh.oso.servicenow.cursor.SnowTimestamp;
 import sh.oso.servicenow.cursor.SourceOffset;
 import sh.oso.servicenow.cursor.SourcePartition;
 import sh.oso.servicenow.cursor.Watermark;
+import sh.oso.servicenow.http.HttpStats;
 import sh.oso.servicenow.schema.RecordSchemaMapper;
 import sh.oso.servicenow.table.DisplayValue;
 import sh.oso.servicenow.table.EncodedQuery;
@@ -62,6 +63,7 @@ final class TablePoller {
 
     private final TableSpec spec;
     private final TableApiClient api;
+    private final HttpStats httpStats;
     private final Watermark watermark;
     private final Clock localClock;
     private final KeysetQueryBuilder queries;
@@ -96,6 +98,7 @@ final class TablePoller {
             Clock localClock) {
         this.spec = Objects.requireNonNull(spec, "spec");
         this.api = client.tableApi();
+        this.httpStats = client.http().stats();
         this.watermark = new Watermark(client.serverClock());
         this.localClock = localClock == null ? Clock.systemUTC() : localClock;
         this.queries =
@@ -194,6 +197,9 @@ final class TablePoller {
     /** One unit of work: at most one request; the page's records, or nothing while idle. */
     List<SourceRecord> poll() {
         long t0 = System.nanoTime();
+        // The task polls its tables one request at a time on one thread, so the throttled time
+        // the shared HTTP client accumulates during this poll belongs to this table.
+        long throttledBefore = httpStats.throttledMillis();
         try {
             if (state == State.INIT) {
                 beginSweep();
@@ -219,6 +225,7 @@ final class TablePoller {
             }
             throw e;
         } finally {
+            metrics.throttled(httpStats.throttledMillis() - throttledBefore);
             metrics.pollDuration((System.nanoTime() - t0) / 1_000_000L);
         }
     }

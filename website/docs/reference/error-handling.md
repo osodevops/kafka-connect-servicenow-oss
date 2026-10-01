@@ -171,7 +171,7 @@ permanent record error follows `behavior.on.api.errors` directly.
 
 A `RetriableException` from `poll()` or `put()` tells the framework to call the method
 again after `errors.retry.timeout` and `errors.retry.delay.max.ms` (worker or connector
-level). The task status stays `RUNNING`, and the JMX `retries` counter increments. The
+level). The task status stays `RUNNING`, and the JMX `Retries` counter increments. The
 connector throws it only after its own bounded retries are exhausted on a **transient**
 class, so a `RetriableException` in the log means the instance has been unavailable or
 throttled for at least `snow.retry.max.elapsed.ms`. Permanent failures never take this

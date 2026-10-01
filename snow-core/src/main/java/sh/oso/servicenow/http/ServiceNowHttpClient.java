@@ -31,7 +31,8 @@ import sh.oso.servicenow.limits.ConcurrencyLimiter;
  * {@link RetryPolicy} (the {@link RequestSpec#idempotent()} flag decides whether a failure after
  * sending may be retried) and holds a {@link ConcurrencyLimiter} permit while on the wire. Response
  * bodies are bounded by {@link HttpConfig#maxResponseBytes()}; the {@code Date} header feeds the
- * {@link #serverClock()}.
+ * {@link #serverClock()}. Retries, throttled time and the last success are counted in {@link
+ * #stats()}.
  */
 public final class ServiceNowHttpClient implements AutoCloseable {
 
@@ -44,6 +45,8 @@ public final class ServiceNowHttpClient implements AutoCloseable {
     private final ConcurrencyLimiter limiter;
     private final HttpConfig cfg;
     private final ServerClock serverClock;
+    private final Clock localClock;
+    private final HttpStats stats = new HttpStats();
 
     public ServiceNowHttpClient(
             URI baseUrl,
@@ -66,10 +69,11 @@ public final class ServiceNowHttpClient implements AutoCloseable {
         this.baseUrl = stripTrailingSlash(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.http = Objects.requireNonNull(http, "http");
         this.tokens = Objects.requireNonNull(tokens, "tokens");
-        this.retry = Objects.requireNonNull(retry, "retry");
+        this.retry = Objects.requireNonNull(retry, "retry").withObserver(stats::onRetry);
         this.limiter = Objects.requireNonNull(limiter, "limiter");
         this.cfg = Objects.requireNonNull(cfg, "cfg");
-        this.serverClock = new ServerClock(localClock);
+        this.localClock = localClock == null ? Clock.systemUTC() : localClock;
+        this.serverClock = new ServerClock(this.localClock);
     }
 
     public URI baseUrl() {
@@ -86,6 +90,11 @@ public final class ServiceNowHttpClient implements AutoCloseable {
 
     public HttpConfig config() {
         return cfg;
+    }
+
+    /** Retry, throttling and last-success counters for this client. */
+    public HttpStats stats() {
+        return stats;
     }
 
     /**
@@ -127,6 +136,7 @@ public final class ServiceNowHttpClient implements AutoCloseable {
             }
             throw failure;
         }
+        stats.succeeded(localClock.millis());
         return result;
     }
 

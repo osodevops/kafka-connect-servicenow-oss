@@ -48,8 +48,14 @@ final class ServiceNowWriter implements AutoCloseable {
     private final String username;
     private final ExecutorService executor;
     private final Semaphore inFlight;
+    private final SinkWriterMetrics metrics;
 
     ServiceNowWriter(SinkConfig config, ServiceNowClient client) {
+        this(config, client, new SinkWriterMetrics(client.http().stats()));
+    }
+
+    ServiceNowWriter(SinkConfig config, ServiceNowClient client, SinkWriterMetrics metrics) {
+        this.metrics = metrics;
         this.router = new TableRouter(config);
         this.ids = new IdExtractor(config);
         this.operations = new OperationResolver(config);
@@ -130,7 +136,17 @@ final class ServiceNowWriter implements AutoCloseable {
         return out;
     }
 
+    SinkWriterMetrics metrics() {
+        return metrics;
+    }
+
     Outcome writeOne(SinkRecord record) {
+        Outcome outcome = attempt(record);
+        metrics.recorded(outcome);
+        return outcome;
+    }
+
+    private Outcome attempt(SinkRecord record) {
         String table = null;
         String sysId = null;
         Operation op = null;
@@ -183,6 +199,7 @@ final class ServiceNowWriter implements AutoCloseable {
     private AmbiguousWritePolicy.Result execute(
             Operation op, String table, String sysId, Map<String, Object> body) {
         acquire();
+        metrics.requestStarted();
         try {
             switch (op) {
                 case CREATE -> {
@@ -211,6 +228,7 @@ final class ServiceNowWriter implements AutoCloseable {
                 default -> throw new IllegalStateException(op.toString());
             }
         } finally {
+            metrics.requestFinished();
             inFlight.release();
         }
     }

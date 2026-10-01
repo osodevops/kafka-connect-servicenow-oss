@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import javax.management.ObjectName;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -17,6 +18,7 @@ import org.apache.kafka.connect.sink.SinkTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sh.oso.servicenow.ServiceNowClient;
+import sh.oso.servicenow.metrics.ServiceNowMetrics;
 
 /**
  * Writes Kafka records to ServiceNow tables. {@link #put} hands the batch to the {@link
@@ -25,6 +27,9 @@ import sh.oso.servicenow.ServiceNowClient;
  * worker offers one) and then follow {@code behavior.on.api.errors}; a retryable exhaustion throws
  * {@link RetriableException} so the framework re-delivers the batch. {@link #preCommit} flushes the
  * reporter and commits only offsets of records that succeeded or were accepted by an error path.
+ *
+ * <p>The task registers a {@link SinkWriterMetricsMXBean} under {@code
+ * sh.oso.servicenow:type=sink-writer,connector=<name>,task=<n>} for its lifetime.
  */
 public class ServiceNowSinkTask extends SinkTask {
 
@@ -36,6 +41,8 @@ public class ServiceNowSinkTask extends SinkTask {
     private ServiceNowWriter writer;
     private Reporter reporter;
     private ErrantRecordReporter errantReporter;
+    private SinkWriterMetrics metrics;
+    private ObjectName mbean;
     private final Map<TopicPartition, Long> completed = new HashMap<>();
 
     public ServiceNowSinkTask() {
@@ -55,8 +62,10 @@ public class ServiceNowSinkTask extends SinkTask {
     public void start(Map<String, String> props) {
         config = new SinkConfig(props);
         client = ServiceNowClient.create(config.coreConfig());
-        writer = new ServiceNowWriter(config, client);
-        reporter = new Reporter(config, producerFactory);
+        metrics = new SinkWriterMetrics(client.http().stats());
+        writer = new ServiceNowWriter(config, client, metrics);
+        reporter = new Reporter(config, producerFactory, metrics);
+        registerMetrics(props);
         errantReporter = null;
         try {
             errantReporter = context != null ? context.errantRecordReporter() : null;
@@ -200,8 +209,29 @@ public class ServiceNowSinkTask extends SinkTask {
         partitions.forEach(completed::remove);
     }
 
+    /** The MBean this task registered, or null when the platform server refused it. */
+    ObjectName mbeanName() {
+        return mbean;
+    }
+
+    SinkWriterMetrics metrics() {
+        return metrics;
+    }
+
+    private void registerMetrics(Map<String, String> props) {
+        ObjectName name =
+                ServiceNowMetrics.sinkWriterName(
+                        ServiceNowMetrics.connectorName(props), ServiceNowMetrics.taskId(props));
+        mbean =
+                ServiceNowMetrics.register(name, metrics, SinkWriterMetricsMXBean.class)
+                        ? name
+                        : null;
+    }
+
     @Override
     public void stop() {
+        ServiceNowMetrics.unregister(mbean);
+        mbean = null;
         if (reporter != null) {
             reporter.close();
         }

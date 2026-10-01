@@ -39,7 +39,7 @@ Every request goes through `snow-core`'s `RetryPolicy`:
    The connector then throws a `RetriableException`, so the Connect framework itself
    retries the poll or the batch, and the task status stays `RUNNING` instead of `FAILED`.
 4. Throttled time is counted per table (source) and per writer (sink) in the JMX metrics,
-   so a rule that is too tight shows up as `throttledMillis` before it shows up as
+   so a rule that is too tight shows up as `ThrottledMillis` before it shows up as
    latency.
 
 Retries never loop indefinitely inside `poll()` or `put()`; the bounds above always
@@ -98,7 +98,8 @@ Guidance:
 - Worker log: `429 ... retrying after` lines mean the rule is engaged; `retries exhausted`
   followed by a `RetriableException` means it stayed engaged longer than
   `snow.retry.max.elapsed.ms`.
-- JMX (`sh.oso.servicenow:type=source-table,...` and `type=sink-writer,...`): `retries`,
-  `throttledMillis`, `lagSeconds` (source) and `inFlight` (sink).
+- JMX (`sh.oso.servicenow:type=source-table,...` and `type=sink-writer,...`): `Retries`,
+  `ThrottledMillis`, `LagSeconds` (source) and `InFlight` (sink); every attribute is listed
+  in the [metrics reference](../reference/metrics.md).
 - Instance side: the rate limit rule's own violation log shows which user and resource
   tripped it.

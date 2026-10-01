@@ -47,9 +47,15 @@ final class Reporter implements AutoCloseable {
     private final String errorTopic;
     private final boolean includeBody;
     private final Producer<byte[], byte[]> producer;
+    private final SinkWriterMetrics metrics;
     private final AtomicReference<Exception> sendFailure = new AtomicReference<>();
 
     Reporter(SinkConfig config, ProducerFactory factory) {
+        this(config, factory, null);
+    }
+
+    Reporter(SinkConfig config, ProducerFactory factory, SinkWriterMetrics metrics) {
+        this.metrics = metrics;
         this.successTopic = config.successTopic();
         this.errorTopic = config.errorTopic();
         this.includeBody = config.includeRequestBody();
@@ -154,6 +160,9 @@ final class Reporter implements AutoCloseable {
             throw new ConnectException("Cannot render reporter payload", e);
         }
         ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
+        if (metrics != null) {
+            metrics.reported(topic.equals(successTopic));
+        }
         record.headers()
                 .add(HEADER_TOPIC, utf8(o.record().topic()))
                 .add(HEADER_PARTITION, utf8(String.valueOf(o.record().kafkaPartition())))

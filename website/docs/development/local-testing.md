@@ -21,7 +21,7 @@ optional tiers run against a real instance when you have one.
 | `EncodedQueryEvaluator` | `=`, `!=`, `>`, `>=`, `<`, `<=`, `LIKE`, `STARTSWITH`, `IN`, `ISEMPTY`, `ISNOTEMPTY`, `^`, `^OR`, `^NQ`, `ORDERBY`, `ORDERBYDESC`; `sysparm_limit`, `sysparm_offset`, `sysparm_fields`, `sysparm_display_value`, `sysparm_exclude_reference_link`, `sysparm_query_no_domain` | Plus an `invalidQueryReturnsNoRows` toggle that mimics `glide.invalid_query.returns_no_rows` |
 | `FaultInjector` | `unauthorizedOnce`, `rateLimit(times, retryAfter)`, `serverError`, `timeoutAfterWrite` (the write is applied, then the response is delayed past the client timeout), `malformedJsonOnce`, `truncatedBodyOnce`, `hideField` (ACL simulation), `forbidTable` | Per table or globally |
 | `RequestJournal` | What the connector actually sent: bodies per request, request counts, the in-flight high-water mark | Used by `PatchSendsOnlyIntendedFieldsTest` and the writer bound tests |
-| `FakeServiceNowMain` | The same fake as a standalone process, seeded with `incident` rows | Runs in the `fake` profile of `examples/docker-compose.yml` and behind the Docker e2e |
+| `FakeServiceNowMain` | The same fake as a standalone process, seeded with 25 `incident` rows and the `sys_db_object` and `sys_dictionary` rows that describe the table, so the sink's default `snow.sink.unknown.field.behavior=fail` works against it | Runs in the `fake` profile of `examples/docker-compose.yml` and behind the Docker e2e |
 
 Because both connectors take their endpoints from configuration (`snow.url`,
 `snow.oauth.token.url`), pointing a connector at the fake is a config change, not a code

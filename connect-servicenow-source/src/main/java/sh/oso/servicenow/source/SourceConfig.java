@@ -20,6 +20,7 @@ import sh.oso.servicenow.common.ServiceNowException;
 import sh.oso.servicenow.config.CoreConfig;
 import sh.oso.servicenow.config.CoreConfigDefs;
 import sh.oso.servicenow.cursor.KeysetQueryBuilder;
+import sh.oso.servicenow.metrics.ServiceNowMetrics;
 import sh.oso.servicenow.schema.SchemaEvolution;
 import sh.oso.servicenow.schema.SchemaMode;
 import sh.oso.servicenow.schema.TypedFieldMapping;
@@ -53,6 +54,9 @@ public class SourceConfig extends AbstractConfig {
 
     /** Internal: aliases assigned to one task by the connector. */
     public static final String TASK_TABLES = "snow.task.tables";
+
+    /** Internal: the task's index, set by the connector; names the task's JMX MBeans. */
+    public static final String TASK_ID = ServiceNowMetrics.TASK_ID_KEY;
 
     public static final String SCHEMA_MODE_SCHEMALESS = "schemaless";
     public static final String SCHEMA_MODE_STRINGS = "strings";
@@ -117,6 +121,17 @@ public class SourceConfig extends AbstractConfig {
                 ++t,
                 Width.LONG,
                 "Task tables");
+        def.define(
+                TASK_ID,
+                Type.INT,
+                -1,
+                Importance.LOW,
+                "Internal: the task index the connector assigned, used in the `task=` key of the"
+                        + " task's JMX MBeans. Do not set.",
+                GROUP_TABLES,
+                ++t,
+                Width.SHORT,
+                "Task id");
 
         int s = 0;
         def.define(

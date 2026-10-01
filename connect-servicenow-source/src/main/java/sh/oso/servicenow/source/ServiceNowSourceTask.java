@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.management.ObjectName;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import sh.oso.servicenow.ServiceNowClient;
 import sh.oso.servicenow.common.ConnectExceptions;
 import sh.oso.servicenow.cursor.SourcePartition;
+import sh.oso.servicenow.metrics.ServiceNowMetrics;
 
 /**
  * Runs one {@link TablePoller} per assigned table over a shared {@link ServiceNowClient}. Pollers
@@ -24,6 +26,10 @@ import sh.oso.servicenow.cursor.SourcePartition;
  * parked and its failure is raised once the other tables have nothing to deliver, so one broken
  * table never hides data from the others but is never hidden either. Retryable failures surface as
  * {@link RetriableException} and the poller retries the same request on the next poll.
+ *
+ * <p>Each table's {@link TableMetrics} is registered as a {@link SourceTableMetricsMXBean} under
+ * {@code sh.oso.servicenow:type=source-table,connector=<name>,task=<n>,table=<table>} for the life
+ * of the task.
  */
 public class ServiceNowSourceTask extends SourceTask {
 
@@ -34,6 +40,7 @@ public class ServiceNowSourceTask extends SourceTask {
     private ServiceNowClient client;
     private final List<TablePoller> pollers = new ArrayList<>();
     private final Set<TablePoller> parked = new HashSet<>();
+    private final List<ObjectName> mbeans = new ArrayList<>();
     private RuntimeException pendingFailure;
     private int next;
 
@@ -81,6 +88,7 @@ public class ServiceNowSourceTask extends SourceTask {
                         partition,
                         stored == null ? "no stored offset" : "stored offset " + stored);
             }
+            registerMetrics(props);
             LOG.info(
                     "ServiceNow source task started for {} table(s) on {}: {}",
                     pollers.size(),
@@ -141,6 +149,8 @@ public class ServiceNowSourceTask extends SourceTask {
 
     @Override
     public void stop() {
+        mbeans.forEach(ServiceNowMetrics::unregister);
+        mbeans.clear();
         pollers.clear();
         parked.clear();
         if (client != null) {
@@ -161,6 +171,23 @@ public class ServiceNowSourceTask extends SourceTask {
 
     List<TablePoller> pollers() {
         return Collections.unmodifiableList(pollers);
+    }
+
+    /** Names of the MBeans this task registered (empty when registration was refused). */
+    List<ObjectName> mbeanNames() {
+        return Collections.unmodifiableList(mbeans);
+    }
+
+    private void registerMetrics(Map<String, String> props) {
+        String connector = ServiceNowMetrics.connectorName(props);
+        int task = ServiceNowMetrics.taskId(props);
+        for (TablePoller poller : pollers) {
+            ObjectName name = ServiceNowMetrics.sourceTableName(connector, task, poller.table());
+            if (ServiceNowMetrics.register(
+                    name, poller.metrics(), SourceTableMetricsMXBean.class)) {
+                mbeans.add(name);
+            }
+        }
     }
 
     /** Prefixes the failure with the table unless the poller already named it. */

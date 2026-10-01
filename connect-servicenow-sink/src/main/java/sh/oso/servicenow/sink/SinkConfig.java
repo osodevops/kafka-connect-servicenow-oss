@@ -16,6 +16,7 @@ import org.apache.kafka.common.config.ConfigDef.Width;
 import org.apache.kafka.common.config.ConfigException;
 import sh.oso.servicenow.config.CoreConfig;
 import sh.oso.servicenow.config.CoreConfigDefs;
+import sh.oso.servicenow.metrics.ServiceNowMetrics;
 import sh.oso.servicenow.table.PathSegments;
 
 /**
@@ -68,6 +69,9 @@ public class SinkConfig extends AbstractConfig {
     public static final String REPORTER_INCLUDE_REQUEST_BODY =
             "snow.sink.reporter.include.request.body";
     public static final String BEHAVIOR_ON_API_ERRORS = "behavior.on.api.errors";
+
+    /** Internal: the task's index, set by the connector; names the task's JMX MBean. */
+    public static final String TASK_ID = ServiceNowMetrics.TASK_ID_KEY;
 
     public static final String DEFAULT_TABLE_HEADER = "snow.table";
     public static final String DEFAULT_OPERATION_HEADER = "snow.operation";
@@ -456,6 +460,17 @@ public class SinkConfig extends AbstractConfig {
                 ++w,
                 Width.SHORT,
                 "Behavior on API errors");
+        def.define(
+                TASK_ID,
+                Type.INT,
+                -1,
+                Importance.LOW,
+                "Internal: the task index the connector assigned, used in the `task=` key of the"
+                        + " task's JMX MBean. Do not set.",
+                GROUP_WRITES,
+                ++w,
+                Width.SHORT,
+                "Task id");
 
         int p = 0;
         def.define(

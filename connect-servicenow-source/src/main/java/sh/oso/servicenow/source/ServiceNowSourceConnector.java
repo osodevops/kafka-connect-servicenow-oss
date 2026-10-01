@@ -62,6 +62,7 @@ public class ServiceNowSourceConnector extends SourceConnector {
             }
             Map<String, String> taskConfig = new HashMap<>(originals);
             taskConfig.put(SourceConfig.TASK_TABLES, String.join(",", tables));
+            taskConfig.put(SourceConfig.TASK_ID, Integer.toString(configs.size()));
             configs.add(taskConfig);
             LOG.info("Task {} owns tables {}", configs.size() - 1, tables);
         }

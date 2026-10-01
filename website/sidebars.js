@@ -66,6 +66,7 @@ const sidebars = {
         'reference/authentication',
         'reference/error-handling',
         'reference/schemas',
+        'reference/metrics',
       ],
     },
     {

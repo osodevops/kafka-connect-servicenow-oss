@@ -17,7 +17,11 @@ class ServiceNowSinkConnectorTest {
         c.start(props);
         List<Map<String, String>> tasks = c.taskConfigs(3);
         assertThat(tasks).hasSize(3);
-        assertThat(tasks).allSatisfy(t -> assertThat(t).isEqualTo(props));
+        for (int i = 0; i < tasks.size(); i++) {
+            assertThat(tasks.get(i))
+                    .containsAllEntriesOf(props)
+                    .containsEntry(SinkConfig.TASK_ID, Integer.toString(i));
+        }
         assertThat(c.taskClass()).isEqualTo(ServiceNowSinkTask.class);
         assertThat(c.config().names()).contains(SinkConfig.TABLE, "snow.url");
         assertThat(c.version()).isNotBlank();

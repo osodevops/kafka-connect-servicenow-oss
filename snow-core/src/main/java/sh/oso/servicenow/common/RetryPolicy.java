@@ -36,6 +36,20 @@ public final class RetryPolicy {
         long nanos();
     }
 
+    /** Told about every retry just before its wait, so callers can keep counters. */
+    @FunctionalInterface
+    public interface Observer {
+        /**
+         * @param opName the operation being retried
+         * @param attempt the attempt that just failed (1-based)
+         * @param wait how long the policy is about to wait before the next attempt
+         * @param failure what the attempt failed with
+         */
+        void onRetry(String opName, int attempt, Duration wait, Exception failure);
+    }
+
+    public static final Observer NO_OBSERVER = (op, attempt, wait, failure) -> {};
+
     public static final Sleeper THREAD_SLEEPER =
             d -> {
                 if (!d.isZero() && !d.isNegative()) {
@@ -48,15 +62,26 @@ public final class RetryPolicy {
     private final RetryConfig config;
     private final Sleeper sleeper;
     private final Ticker ticker;
+    private final Observer observer;
 
     public RetryPolicy(RetryConfig config) {
         this(config, THREAD_SLEEPER, SYSTEM_TICKER);
     }
 
     public RetryPolicy(RetryConfig config, Sleeper sleeper, Ticker ticker) {
+        this(config, sleeper, ticker, NO_OBSERVER);
+    }
+
+    private RetryPolicy(RetryConfig config, Sleeper sleeper, Ticker ticker, Observer observer) {
         this.config = config;
         this.sleeper = sleeper;
         this.ticker = ticker;
+        this.observer = observer == null ? NO_OBSERVER : observer;
+    }
+
+    /** The same policy (config, sleeper and ticker) reporting every retry to {@code observer}. */
+    public RetryPolicy withObserver(Observer observer) {
+        return new RetryPolicy(config, sleeper, ticker, observer);
     }
 
     public RetryConfig config() {
@@ -125,6 +150,7 @@ public final class RetryPolicy {
                         config.maxAttempts(),
                         wait.toMillis(),
                         e.getMessage());
+                observer.onRetry(opName, attempt, wait, e);
                 sleep(wait);
             }
         }

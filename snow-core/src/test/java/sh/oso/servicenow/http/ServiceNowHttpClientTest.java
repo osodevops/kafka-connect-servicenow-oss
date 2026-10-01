@@ -114,18 +114,34 @@ class ServiceNowHttpClientTest {
     @Test
     void rateLimitWaitsExactlyRetryAfterOnTheVirtualSleeper() {
         snow.faults().rateLimit(1, Duration.ofSeconds(2));
-        assertThat(client().execute(RequestSpec.get(INCIDENT)).status()).isEqualTo(200);
+        ServiceNowHttpClient client = client();
+        assertThat(client.stats().lastSuccessfulRequestEpochMs()).isZero();
+        assertThat(client.execute(RequestSpec.get(INCIDENT)).status()).isEqualTo(200);
         assertThat(time.sleeps()).containsExactly(Duration.ofSeconds(2));
         snow.wireMock().verify(2, getRequestedFor(urlPathEqualTo(INCIDENT)));
+        assertThat(client.stats().retries()).isEqualTo(1);
+        assertThat(client.stats().throttledMillis()).isEqualTo(2000);
+        assertThat(client.stats().lastSuccessfulRequestEpochMs()).isPositive();
     }
 
+    /**
+     * One injected fault, then success. The fake answers every injected fault with {@code
+     * Connection: close}, so the retry always opens a fresh connection instead of racing a
+     * keep-alive socket the server has dropped; the attempt budget ({@code faults + 2}) leaves room
+     * for exactly the one retry the assertions count.
+     */
     @ParameterizedTest
     @ValueSource(ints = {502, 503, 504, 408, 425, 500, 429})
     void retriesTransientStatuses(int status) {
         snow.faults().serverError(1, status);
-        assertThat(client().execute(RequestSpec.get(INCIDENT)).status()).isEqualTo(200);
+        ServiceNowHttpClient client = client(basic(), retry(3), HttpConfig.defaults());
+        assertThat(client.execute(RequestSpec.get(INCIDENT)).status()).isEqualTo(200);
         assertThat(time.sleeps()).hasSize(1);
         snow.wireMock().verify(2, getRequestedFor(urlPathEqualTo(INCIDENT)));
+        assertThat(client.stats().retries()).isEqualTo(1);
+        // Only a 429 counts as throttling; without Retry-After the wait is the jittered backoff.
+        assertThat(client.stats().throttledMillis())
+                .isEqualTo(status == 429 ? time.sleeps().get(0).toMillis() : 0L);
     }
 
     @ParameterizedTest
