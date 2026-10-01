@@ -7,6 +7,10 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # connect-api 3.9 is the deliberate compile floor; 4.x workers are covered by the e2e matrix
+      - dependency-name: "org.apache.kafka:*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

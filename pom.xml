@@ -343,6 +343,18 @@
   </build>
 
   <profiles>
+    <!-- google-java-format 1.36+ needs Java 21 at runtime; on older JDKs the Spotless check is
+         skipped and CI enforces it on the JDK 21 job. -->
+    <profile>
+      <id>spotless-needs-jdk21</id>
+      <activation>
+        <jdk>(,21)</jdk>
+      </activation>
+      <properties>
+        <spotless.check.skip>true</spotless.check.skip>
+      </properties>
+    </profile>
+
     <!-- Release profile for Maven Central deployment (Sonatype Central Portal) -->
     <profile>
       <id>release</id>

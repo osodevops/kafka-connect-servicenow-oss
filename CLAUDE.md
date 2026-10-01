@@ -25,7 +25,7 @@ mvn verify -Pcontract -DskipE2E -DskipUnitTests=true   # real instance; needs SN
 mvn verify -Psoak -DskipE2E -DskipUnitTests=true -pl connect-servicenow-source -am   # 1M-row backfill in 256 MB
 ```
 
-No ServiceNow instance is needed: `snow-core`'s test-jar ships a fake ServiceNow (WireMock Table API over an in-memory table store, encoded query evaluator, OAuth token endpoint, fault injection). `verify` also runs Spotless, JaCoCo (70% line in `snow-core`, 60% in the connectors) and the Maven Enforcer. CI runs on Java 17 and 21, runs the e2e on Kafka 3.x and 4.x worker images, fails if the generated configuration reference is not committed, and publishes a `migration-evidence` artefact from the Confluent cutover test on every build.
+No ServiceNow instance is needed: `snow-core`'s test-jar ships a fake ServiceNow (WireMock Table API over an in-memory table store, encoded query evaluator, OAuth token endpoint, fault injection). `verify` also runs Spotless (google-java-format needs JDK 21+; the check is skipped on older JDKs and enforced by the JDK 21 CI job), JaCoCo (70% line in `snow-core`, 60% in the connectors) and the Maven Enforcer. CI runs on Java 17 and 21, runs the e2e on Kafka 3.x and 4.x worker images, fails if the generated configuration reference is not committed, and publishes a `migration-evidence` artefact from the Confluent cutover test on every build.
 
 ## Releasing
 
