@@ -26,7 +26,7 @@ reporter topics and the dead letter queue.
 | Other `5xx` | Permanent | Fail the table (configurable retry is not offered for unknown 5xx) | Permanent record error |
 | Connect timeout, connection reset before the request is sent | Transient | Retried | Retried |
 | Timeout **after** the request was sent | Ambiguous | Retried (`GET` is idempotent) | `PATCH`, `PUT`, `DELETE` retried (idempotent by `sys_id`); `CREATE` goes to `snow.sink.create.ambiguous.behavior` |
-| Malformed or truncated JSON body | Transient | Retried once, then the table fails | Retried once, then a permanent record error |
+| Malformed or truncated JSON body | Transient | Retried within the retry budget, then the task throws `RetriableException` | Retried within the retry budget, then the batch is retried by the worker (`RetriableException`) |
 
 Retries are bounded by `snow.retry.max.attempts` and `snow.retry.max.elapsed.ms`. When
 they are exhausted on a transient class, the task throws `RetriableException` and the
