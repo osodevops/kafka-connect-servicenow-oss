@@ -1,0 +1,17 @@
+{
+  "name": "servicenow-source-fake",
+  "config": {
+    "connector.class": "sh.oso.servicenow.source.ServiceNowSourceConnector",
+    "tasks.max": "1",
+    "snow.url": "http://servicenow-fake:8090",
+    "snow.auth.type": "basic",
+    "snow.auth.username": "connect",
+    "snow.auth.password": "secret",
+    "snow.tables": "incident",
+    "snow.table.incident.name": "incident",
+    "snow.table.incident.topic": "servicenow.incident",
+    "snow.table.incident.start.timestamp": "1970-01-01 00:00:00",
+    "snow.source.poll.interval.ms": "2000",
+    "snow.source.schema.mode": "schemaless"
+  }
+}

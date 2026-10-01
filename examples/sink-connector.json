@@ -1,0 +1,21 @@
+{
+  "name": "servicenow-incident-sink",
+  "config": {
+    "connector.class": "sh.oso.servicenow.sink.ServiceNowSinkConnector",
+    "tasks.max": "2",
+    "topics": "incident-updates",
+    "snow.url": "https://YOUR_INSTANCE.service-now.com",
+    "snow.auth.type": "basic",
+    "snow.auth.username": "${file:/secrets/snow.properties:username}",
+    "snow.auth.password": "${file:/secrets/snow.properties:password}",
+    "snow.sink.table": "incident",
+    "snow.sink.operation.mode": "key_value",
+    "snow.sink.update.method": "PATCH",
+    "snow.sink.create.ambiguous.behavior": "correlation_lookup",
+    "snow.sink.correlation.field": "correlation_id",
+    "snow.sink.reporter.bootstrap.servers": "kafka:19092",
+    "snow.sink.reporter.error.topic": "servicenow-incident-sink-errors",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-servicenow-incident-sink"
+  }
+}

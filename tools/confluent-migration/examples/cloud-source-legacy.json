@@ -1,0 +1,23 @@
+{
+  "name": "ServiceNowSource_0",
+  "config": {
+    "connector.class": "ServiceNowSource",
+    "name": "ServiceNowSource_0",
+    "kafka.auth.mode": "KAFKA_API_KEY",
+    "kafka.api.key": "CHANGE_ME",
+    "kafka.api.secret": "CHANGE_ME",
+    "kafka.topic": "servicenow.incident",
+    "output.data.format": "JSON",
+    "servicenow.url": "https://acme.service-now.com/",
+    "servicenow.table": "incident",
+    "servicenow.user": "kafka_integration",
+    "servicenow.password": "CHANGE_ME",
+    "servicenow.since": "2026-01-01",
+    "poll.interval.s": "30",
+    "batch.max.rows": "10000",
+    "connection.timeout.ms": "50000",
+    "retry.max.times": "3",
+    "tasks.max": "1",
+    "auto.restart.on.user.error": "true"
+  }
+}

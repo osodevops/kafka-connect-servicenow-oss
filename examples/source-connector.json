@@ -1,0 +1,23 @@
+{
+  "name": "servicenow-source",
+  "config": {
+    "connector.class": "sh.oso.servicenow.source.ServiceNowSourceConnector",
+    "tasks.max": "3",
+    "snow.url": "https://YOUR_INSTANCE.service-now.com",
+    "snow.auth.type": "oauth2",
+    "snow.oauth.grant.type": "client_credentials",
+    "snow.oauth.client.id": "${file:/secrets/snow.properties:client.id}",
+    "snow.oauth.client.secret": "${file:/secrets/snow.properties:client.secret}",
+    "snow.tables": "incident,change,cmdb",
+    "snow.table.incident.name": "incident",
+    "snow.table.incident.topic": "servicenow.incident",
+    "snow.table.incident.start.timestamp": "2026-01-01 00:00:00",
+    "snow.table.incident.query": "active=true",
+    "snow.table.change.name": "change_request",
+    "snow.table.change.topic": "servicenow.change_request",
+    "snow.table.cmdb.name": "cmdb_ci_server",
+    "snow.table.cmdb.topic": "servicenow.cmdb_ci_server",
+    "snow.table.cmdb.fields": "sys_id,sys_updated_on,name,ip_address,os",
+    "snow.source.schema.mode": "schemaless"
+  }
+}

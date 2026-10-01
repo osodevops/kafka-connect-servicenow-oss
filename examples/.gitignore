@@ -1,0 +1,3 @@
+# unzipped connector plugins and real credentials never get committed
+plugins/
+secrets/

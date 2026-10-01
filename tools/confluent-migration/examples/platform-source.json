@@ -1,0 +1,31 @@
+{
+  "name": "servicenow-incidents",
+  "config": {
+    "connector.class": "io.confluent.connect.servicenow.ServiceNowSourceConnector",
+    "tasks.max": "1",
+    "servicenow.url": "https://acme.service-now.com",
+    "servicenow.username": "kafka_integration",
+    "servicenow.password": "CHANGE_ME",
+    "servicenow.table": "incident",
+    "servicenow.since": "2026-01-01",
+    "batch.max.rows": "5000",
+    "poll.interval.s": "20",
+    "servicenow.view.variable.prefix": "",
+    "kafka.topic": "servicenow.incident",
+    "retry.max.times": "3",
+    "connection.timeout.ms": "50000",
+    "read.timeout.ms": "20000",
+    "write.timeout.ms": "30000",
+    "proxy.url": "https://proxy.acme.internal:3128",
+    "servicenow.ssl.truststore.path": "/etc/pki/truststore.jks",
+    "servicenow.ssl.truststore.password": "CHANGE_ME",
+    "confluent.topic.bootstrap.servers": "kafka:9092",
+    "confluent.topic.replication.factor": "1",
+    "confluent.license": "",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "topic.creation.default.replication.factor": "1",
+    "topic.creation.default.partitions": "3"
+  }
+}

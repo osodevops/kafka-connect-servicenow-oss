@@ -1,0 +1,26 @@
+{
+  "name": "ServiceNowSink_0",
+  "config": {
+    "connector.class": "ServiceNowSink",
+    "name": "ServiceNowSink_0",
+    "input.data.format": "AVRO",
+    "kafka.auth.mode": "SERVICE_ACCOUNT",
+    "kafka.service.account.id": "sa-abc123",
+    "servicenow.url": "https://acme.service-now.com",
+    "servicenow.table": "incident",
+    "servicenow.user": "kafka_integration",
+    "servicenow.password": "CHANGE_ME",
+    "connection.timeout.ms": "50000",
+    "retry.max.times": "3",
+    "max.poll.interval.ms": "300000",
+    "max.poll.records": "500",
+    "topics": "incident-updates",
+    "tasks.max": "1",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "dlq-${connector}",
+    "reporter.result.topic.name": "success-${connector}",
+    "reporter.error.topic.name": "error-${connector}",
+    "csfle.enabled": "false",
+    "auto.restart.on.user.error": "true"
+  }
+}
