@@ -52,7 +52,7 @@ All of these run in `verify` and fail the build:
 
 | Gate | What it checks | Fix |
 |---|---|---|
-| Spotless (`google-java-format`, AOSP style, 4-space indent) | Formatting of every Java file | `mvn spotless:apply` |
+| Spotless (`google-java-format` 1.36, AOSP style, 4-space indent) | Formatting of every Java file; needs JDK 21 or newer at runtime, see below | `mvn spotless:apply` |
 | JaCoCo `check` | Line coverage floor per module: **70%** in `snow-core`, **60%** in each connector (`jacoco.line.minimum`); `e2e-tests` is exempt | Add tests; the HTML report is in `<module>/target/site/jacoco/` |
 | Maven Enforcer | Maven 3.6.3 or later, Java 17 or later, and `dependencyConvergence` (no two versions of the same artefact on the classpath) | Pin the version in the parent's `dependencyManagement` |
 | `PluginZipContentsTest` (`e2e-tests`, surefire) | Each ZIP has both service-loader manifests, `doc/LICENSE`, and no `connect-api`, `kafka-clients` or `connect-transforms` jar in `lib/` | Mark the dependency `provided` |
@@ -61,6 +61,15 @@ All of these run in `verify` and fail the build:
 Spotless and JaCoCo run before packaging, so a formatting slip fails fast. The
 generated reference pages are the only part of `website/` that a Java change must
 update; never edit them by hand.
+
+:::note Spotless needs JDK 21
+`google-java-format` 1.36 runs only on JDK 21 or newer. On JDK 17 the
+`spotless-needs-jdk21` Maven profile activates automatically and sets
+`spotless.check.skip=true`, so the build still passes but formatting is not checked.
+CI enforces formatting on its JDK 21 job, so if you develop on JDK 17 run
+`mvn spotless:apply` with a JDK 21 or newer (for example `JAVA_HOME=/path/to/jdk21 mvn spotless:apply`)
+before opening a pull request, or the JDK 21 job will fail on formatting alone.
+:::
 
 ## Module layout
 

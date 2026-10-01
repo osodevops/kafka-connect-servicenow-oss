@@ -119,13 +119,25 @@ Typical items and what to do:
 | MANUAL note | Action |
 |---|---|
 | `pagination.query` contains `${offset}` or `ORDERBY` | Keep only the filter part in `snow.table.<alias>.query`; the OSS connector adds its own cursor predicate and ordering and rejects `ORDERBY` in the base query |
-| `pagination.query.field` set | The OSS cursor is always `timestamp.field` plus `sys_id`; if the field was a timestamp, set `snow.table.<alias>.timestamp.field` to it |
-| `servicenow.view.variable.prefix` set (database view) | Translated to `timestamp.field` and `sys.id.field` with the prefix; confirm the column names in the view |
-| `output.data.format` (Cloud) | Choose the worker's `value.converter`; `strings` schema mode gives Confluent Platform's all-string shape, `schemaless` gives plain JSON |
-| Reporter topic replication factor or partitions | Create the reporter topics yourself; the OSS sink does not create topics |
-| `behavior.on.error` or Cloud DLQ settings | Map to `behavior.on.api.errors` and `errors.deadletterqueue.*`; see [Error handling](../reference/error-handling.md) |
-| Cloud `kafka.auth.mode`, `kafka.api.key`, `kafka.service.account.id` | Worker-level settings on a self-managed cluster; not connector configuration |
-| OAuth (`auth.type=OAUTH2`) | Choose `snow.oauth.grant.type=client_credentials` or `password` depending on whether the instance has the client credentials grant enabled; see [ServiceNow setup](../getting-started/servicenow-setup.md) |
+| `pagination.query.field` set to any value | The OSS cursor is always `timestamp.field` plus `sys_id`; if the field was a timestamp, set `snow.table.<alias>.timestamp.field` to `sys_updated_on` or `sys_created_on` |
+| `output.data.format` or `input.data.format` other than `JSON` (Cloud) | Choose the worker's converters for your Schema Registry; for the source also pick a schema mode: `strings` gives Confluent Platform's all-string shape, `schemaless` gives plain JSON |
+| Reporter topics configured without `reporter.bootstrap.servers` (typical of Cloud exports) | Set `snow.sink.reporter.bootstrap.servers` (tasks cannot see the worker's bootstrap servers) or remove `snow.sink.reporter.*.topic` |
+| `behavior.on.error` with an unexpected value | Sink values `fail`, `log` and `ignore` map to `behavior.on.api.errors`; source values `FAIL` and `IGNORE` map to `snow.source.bad.row.behavior`; anything else is set by hand. See [Error handling](../reference/error-handling.md) |
+| `oauth2.token.property` other than `access_token`, or `oauth2.client.headers` set | The OSS client reads the standard `access_token` property and sends no custom token-request headers; ServiceNow's `/oauth_token.do` needs neither |
+| `csfle.enabled=true` | Client-side field level encryption is not supported; decrypt before the connector or with an SMT |
+| No `servicenow.url`, no credentials, or no table with a name and topic | Set `snow.url`, `snow.auth.*` (or `snow.oauth.*`), `snow.tables` and `snow.table.<alias>.name` and `.topic` |
+| Non-numeric `poll.interval.s`, `tables.num`, `read.timeout.ms` or `write.timeout.ms`, or a malformed `servicenow.since` or `start.timestamp` | Set the OSS key by hand in the right unit (`ms`, `YYYY-MM-DD HH:MM:SS` UTC) |
+| Any property the translator does not recognise | Unknown `servicenow.*`, `table*`, `reporter.*` and `oauth2.*` keys are flagged rather than guessed; check the [configuration reference](../reference/configuration/source.md) |
+
+The report also prints `REVIEW` hints, which do not change the exit code: the cutover
+`start.timestamp` to set (see Step 5), the OAuth grant to use when `auth.type=OAUTH2`
+(`client_credentials` is assumed; `password` if the instance has inbound client credentials
+disabled, see [ServiceNow setup](../getting-started/servicenow-setup.md)), the `PUT` and
+`sysId` parity settings on a sink, `consumer.override.*` keys that need
+`connector.client.config.override.policy=All` on the worker, TLS store paths to check on
+the new worker, cursor fields appended to a `fields` projection, and
+`servicenow.view.variable.prefix` translated to a view's `timestamp.field` and
+`sys.id.field` (confirm the column names).
 
 ## Step 4: Rehearse
 
@@ -197,34 +209,48 @@ Trust, but generate a report. The verifier cross-checks **what ServiceNow says c
 evidence file you can attach to the change ticket:
 
 ```bash
-# 1. dump the topic since the cutover
+# 1. dump the topic since the cutover: one TSV line per record,
+#    sys_id <TAB> sys_updated_on <TAB> sys_mod_count
 kafka-console-consumer.sh --bootstrap-server broker:9092 \
-  --topic servicenow.incident --from-beginning \
-  --property print.key=true --property key.separator=$'\t' > dump.tsv
+  --topic servicenow.incident --from-beginning --timeout-ms 30000 \
+| jq -r '(.payload // .) | [.sys_id, .sys_updated_on, .sys_mod_count] | @tsv' > dump.tsv
 
-# 2. compare against the instance
+# 2. compare against the instance (read-only Table API scan of the window)
 tools/confluent-migration/verify_cutover.py \
   --table incident \
-  --instance-url https://acme.service-now.com --username "$USER" --password "$PASS" \
-  --since "$T" --topic-dump dump.tsv --out migration-evidence-incident.json
+  --instance-url https://acme.service-now.com --username "$SNOW_USERNAME" --password "$SNOW_PASSWORD" \
+  --since "$T" --until "$T_END" --query "active=true" \
+  --topic-dump dump.tsv --evidence migration-evidence-incident.json
 ```
 
 ```json
 {
-  "table": "incident",
-  "since": "2026-09-29 07:30:42",
-  "servicenowRowsChanged": 1841,
-  "kafkaRecordsDelivered": 1907,
-  "uniqueKafkaKeys": 1841,
-  "duplicateDeliveries": 66,
-  "missingSysIds": [],
-  "deliveredKeySetSha256": "6b0f6f2b...",
-  "verdict": "PASS: every changed ServiceNow row reached Kafka"
+  "report": "confluent-cutover-verification",
+  "schemaVersion": 1,
+  "parameters": {"table": "incident", "timestampField": "sys_updated_on",
+                 "since": "2026-09-29 07:30:42", "until": "2026-09-29 08:05:00"},
+  "instance": {"source": "live", "rows": 1841, "pages": 2, "sysIdSetSha256": "6b0f6f2b..."},
+  "topic": {"records": 1907, "uniqueSysIds": 1841, "outOfWindow": 0, "sysIdSetSha256": "6b0f6f2b..."},
+  "missingCount": 0,
+  "staleVersionCount": 0,
+  "extraCount": 0,
+  "duplicateRecords": 66,
+  "verdict": "PASS: every row updated in the window reached Kafka"
 }
 ```
 
-The exit code is non-zero if any changed row never arrived; wire it into the runbook as a
-gate.
+Use `--query` for the connector's base filter and `--until` for the end of the window
+(take the dump after it, so both sides see the same rows). Pass `--bearer-token` or
+`SNOW_TOKEN` for OAuth, and `--timestamp-field sys_created_on` for a table polled by
+creation time. If the person running the check has no instance access, export the window
+from ServiceNow (`GET /api/now/table/incident?sysparm_query=...&sysparm_fields=sys_id,sys_updated_on,sys_mod_count`,
+saved as JSON) and pass it with `--instance-export window.json` instead of
+`--instance-url` and credentials; the evidence then records `"source": "export"`.
+
+The exit code is `0` for PASS, `1` when any row updated in the window never arrived or
+arrived only in an older version, `2` for a usage error and `3` for a failed scan or an
+unreadable export; wire it into the runbook as a gate. Credentials never appear in the
+report or on the console.
 
 **The procedure itself is proven in CI.** Every build runs
 `ConfluentCutoverMigrationTest`, which executes this exact cutover (old-connector era,
@@ -291,8 +317,9 @@ not part of the offset.
 | `connection.timeout.ms` | `snow.http.connect.timeout.ms` |
 | `read.timeout.ms`, `write.timeout.ms` | `snow.http.request.timeout.ms` (the larger of the two) |
 | `proxy.url` | `snow.http.proxy.url` |
-| Keystore path, password and type | `snow.tls.keystore.path`, `snow.tls.keystore.password`, `snow.tls.keystore.type` |
-| Truststore path, password and type | `snow.tls.truststore.path`, `snow.tls.truststore.password`, `snow.tls.truststore.type` |
+| `servicenow.ssl.keystore.path` (Cloud: `servicenow.ssl.keystore.location` or `servicenow.ssl.keystorefile`), `servicenow.ssl.keystore.password` | `snow.tls.keystore.path`, `snow.tls.keystore.password` (`snow.tls.keystore.type` keeps its default) |
+| `servicenow.ssl.truststore.path` (Cloud: `servicenow.ssl.truststore.location` or `servicenow.ssl.truststorefile`), `servicenow.ssl.truststore.password` | `snow.tls.truststore.path`, `snow.tls.truststore.password` (`snow.tls.truststore.type` keeps its default) |
+| `servicenow.ssl.key.password` | DROPPED: the private key is unlocked with `snow.tls.keystore.password`; re-key the keystore if the two differ |
 | (none) | `snow.source.schema.mode=strings` for the Platform connector's all-string shape |
 
 ### Cloud Source V2 (`ServiceNowSourceV2`)
@@ -349,24 +376,34 @@ not part of the offset.
 | Confluent | Reason |
 |---|---|
 | `confluent.license`, `confluent.topic.*` | No licence, no licensing topic |
-| `tables.num` | Implied by `snow.tables` |
-| `table{i}.pagination.query.field` | The cursor is always `timestamp.field` plus `sys_id` (MANUAL if it named a different timestamp field) |
+| `servicenow.ssl.enabled`, `servicenow.ssl.protocol` | TLS is used whenever `snow.url` is `https://`, with the JVM default protocol |
+| `servicenow.ssl.key.password` | The private key is unlocked with `snow.tls.keystore.password`; re-key the keystore if the two differ |
+| `oauth2.client.auth.mode`, `oauth2.token.property=access_token`, `oauth2.client.scope=any` | Client credentials are posted form-encoded, the standard `access_token` property is read, and no scope is sent unless `snow.oauth.scope` is set |
+| `tables.num` | Implied by `snow.tables`; `table{i}.*` groups with an index beyond it are dropped |
 | `table{i}.request.parameters.separator` | Requests are built by the client, not by string concatenation |
 | `table{i}.count.records` | `sysparm_no_count=true` is always sent |
 | `table{i}.suppress.pagination.header` | Always suppressed |
-| `retry.backoff.policy`, `retry.on.status.codes` | The backoff is always exponential with jitter and the retryable set is fixed |
-| `reporter.result.topic.replication.factor`, `reporter.result.topic.partitions`, `reporter.error.topic.*` (topic settings), `reporter.admin.*` | The sink does not create topics |
-| `kafka.auth.mode`, `kafka.api.key`, `kafka.api.secret`, `kafka.service.account.id` | Cloud-only; worker settings on self-managed Connect |
-| `schema.context.name`, `value.subject.name.strategy` (Cloud) | Converter settings; set them on the worker or the converter |
+| `retry.backoff.policy`, `retry.on.status.codes` | The backoff is always exponential with jitter, `Retry-After` is honoured and the retryable set is fixed |
+| `reporter.result.topic.replication.factor`, `reporter.result.topic.partitions`, `reporter.error.topic.replication.factor`, `reporter.error.topic.partitions`, `reporter.admin.*`, `reporter.*.topic.key.format`, `reporter.*.topic.value.format` | The sink does not create topics and always writes JSON reporter records |
+| Source-side `reporter.error.topic.name` | The source has no reporter; use `errors.tolerance=all` with `errors.deadletterqueue.topic.name` |
+| `kafka.auth.mode`, `kafka.api.key`, `kafka.api.secret`, `kafka.service.account.id`, `auto.restart.on.user.error` | Cloud platform settings; worker settings on self-managed Connect |
+| `schema.context.name`, `sr.service.account.id`, `key.subject.name.strategy`, `value.subject.name.strategy`, `auto.register.schemas`, `use.latest.version` | Schema Registry settings; set them on the converter if needed |
+| `csfle.enabled=false`, `csfle.onFailure` | Client-side field level encryption is not supported (`csfle.enabled=true` is MANUAL) |
 
 ### MANUAL (needs a decision)
 
 | Confluent | What to decide |
 |---|---|
 | `table{i}.pagination.query` with `${offset}` or `ORDERBY` | Reduce to a plain filter |
-| `table{i}.pagination.query.field` naming a non-timestamp field | Choose `sys_updated_on` or `sys_created_on` |
-| `output.data.format`, `input.data.format` (Cloud) | Choose the worker converters and the source schema mode |
-| `auth.type=OAUTH2` | Client credentials or password grant |
-| `servicenow.view.variable.prefix` | Confirm the view's column names |
-| Reporter topic settings | Create the topics |
-| Cloud DLQ topic | Set `errors.deadletterqueue.topic.name` |
+| `table{i}.pagination.query.field` with any value | Choose `sys_updated_on` or `sys_created_on` for `timestamp.field` |
+| `output.data.format`, `input.data.format` other than `JSON` (Cloud) | Choose the worker converters and the source schema mode |
+| `oauth2.token.property` other than `access_token`; `oauth2.client.headers` | Not supported; confirm the standard token response is enough |
+| `csfle.enabled=true` | Decrypt before the connector |
+| Reporter topics without `reporter.bootstrap.servers` | Set `snow.sink.reporter.bootstrap.servers` or remove the reporter topics |
+| Unexpected values for `auth.type`, `behavior.on.error`, `poll.interval.s`, `tables.num`, the timeouts, `servicenow.since` or `start.timestamp` | Set the OSS key by hand |
+| No `servicenow.url`, credentials, table name or topic | Set `snow.url`, `snow.auth.*`, `snow.tables`, `snow.table.<alias>.name` and `.topic` |
+| Any unrecognised property | Check the configuration reference |
+
+`errors.*`, `transforms*`, `predicates*`, converters, `tasks.max`, `topics` and the
+`producer.override.*`, `consumer.override.*` and `topic.creation.*` families are standard
+Connect keys and pass through unchanged.

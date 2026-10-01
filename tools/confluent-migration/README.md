@@ -7,11 +7,12 @@ self-test that CI runs on every build.
 | Script | Purpose |
 |---|---|
 | `confluent2oss.py` | Translates a Confluent ServiceNow connector config (Platform source/sink, Cloud source legacy, Cloud source V2, Cloud sink) into the `sh.oso` connector config, with a per-property migration report |
-| `verify_cutover.py` | After cutover, scans the ServiceNow table for every row updated in the cutover window and proves each one reached the Kafka topic; writes a SHA-256 backed evidence report |
+| `verify_cutover.py` | After cutover, scans the ServiceNow table (live, or from a saved Table API export) for every row updated in the cutover window and proves each one reached the Kafka topic; writes a SHA-256 backed evidence report |
 | `selftest.py` | Runs both scripts against the fixtures in `examples/` and a localhost fake Table API; no network, no dependencies (`python3 tools/confluent-migration/selftest.py`) |
 
 Requirements: Python 3.9 or newer, nothing else. `verify_cutover.py` needs read access
-to the table through the REST Table API (the connector's own integration user is ideal).
+to the table through the REST Table API (the connector's own integration user is ideal),
+or a saved export of the window passed with `--instance-export`.
 
 ## `confluent2oss.py`: config translator
 
@@ -86,7 +87,7 @@ to change it) so the two connectors can coexist in one cluster during the cutove
 | `ServiceNowSourceV2` | `sh.oso.servicenow.source.ServiceNowSourceConnector` | |
 | `servicenow.url` | `snow.url` | |
 | `auth.type=BASIC` + `connection.user`/`connection.password` | `snow.auth.type=basic`, `snow.auth.username`/`snow.auth.password` | |
-| `auth.type=OAUTH2` | `snow.auth.type=oauth2`, `snow.oauth.grant.type=client_credentials` | |
+| `auth.type=OAUTH2` | `snow.auth.type=oauth2`, `snow.oauth.grant.type=client_credentials` | REVIEW: use `snow.oauth.grant.type=password` plus `snow.auth.username`/`password` if inbound client credentials is disabled on the instance |
 | `oauth2.token.url`, `oauth2.client.id`, `oauth2.client.secret` | `snow.oauth.token.url`, `snow.oauth.client.id`, `snow.oauth.client.secret` | |
 | `oauth2.client.scope` | `snow.oauth.scope` | dropped when it is Confluent's placeholder `any` |
 | `tables.num` + `table{i}.name` / `table{i}.topic` | `snow.tables=t1,...,tn`, `snow.table.t{i}.name` / `.topic` | indexes beyond `tables.num` are dropped |
@@ -134,6 +135,7 @@ and the JVM default); `oauth2.token.property=access_token`, `oauth2.client.auth.
 create reporter topics and always writes JSON: create the topics beforehand); Cloud
 platform keys `kafka.auth.mode`, `kafka.api.key`, `kafka.api.secret`,
 `kafka.service.account.id`, `schema.context.name`, `sr.service.account.id`,
+`key.subject.name.strategy`, `value.subject.name.strategy`,
 `auto.restart.on.user.error`, `csfle.enabled=false`, `csfle.onFailure`,
 `auto.register.schemas`, `use.latest.version`; the source-side
 `reporter.error.topic.name` (use the Connect DLQ).
@@ -187,12 +189,38 @@ It pages the Table API (`sysparm_query=<base>^sys_updated_on>=SINCE^sys_updated_
 - **duplicates**: at-least-once redeliveries (expected across a cutover; consumers dedupe on `sys_id`, `sys_updated_on`, `sys_mod_count`)
 
 Exit `0` = PASS (zero loss), `1` = loss found, `2` = usage error, `3` = ServiceNow
-request failure (after bounded retries on 429/5xx honouring `Retry-After`). The evidence
-JSON contains the parameters, counts, the lists above and the SHA-256 of the sorted
-`sys_id` set on each side; credentials never appear in it or on the console. Pass
-`--timestamp-field sys_created_on` if the table polls by creation time, and take the
-dump after `--until` so both sides see the same window. The integration user must be in
-the UTC timezone, exactly as the connector requires.
+request failure (after bounded retries on 429/5xx honouring `Retry-After`) or an
+unreadable export. The evidence JSON (`schemaVersion` 1) contains the parameters, counts,
+the lists above and the SHA-256 of the sorted `sys_id` set on each side; credentials never
+appear in it or on the console. Pass `--timestamp-field sys_created_on` if the table polls
+by creation time, and take the dump after `--until` so both sides see the same window. The
+integration user must be in the UTC timezone, exactly as the connector requires.
+
+### Offline: `--instance-export`
+
+When the person running the check has no instance access, or the evidence has to be
+reproducible from files alone, export the window from ServiceNow once and compare against
+the file instead of the live table:
+
+```bash
+# anyone with read access saves the window (same base query, fields and bounds)
+curl -s -u "$SNOW_USERNAME:$SNOW_PASSWORD" -H 'Accept: application/json' \
+  "https://acme.service-now.com/api/now/table/incident?sysparm_query=active=true^sys_updated_on>=2026-09-29%2008:55:00^sys_updated_on<=2026-09-29%2009:30:00&sysparm_fields=sys_id,sys_updated_on,sys_mod_count&sysparm_limit=100000&sysparm_no_count=true" \
+  > window.json
+
+# no --instance-url, no credentials
+tools/confluent-migration/verify_cutover.py --table incident \
+  --since "2026-09-29 08:55:00" --until "2026-09-29 09:30:00" \
+  --instance-export window.json --topic-dump dump.tsv --evidence evidence-incident.json
+```
+
+The export is the Table API response as saved (`{"result": [...]}`) or a bare JSON array
+of rows; display-value exports (`{"value": ..., "display_value": ...}` per field) are
+unwrapped. Rows without a 32-character `sys_id` are skipped and counted as
+`instance.unparsableRows`. The evidence records `"source": "export"` and the file name
+instead of an instance URL, so a reviewer can tell the two modes apart. A single large
+`sysparm_limit` is fine for a bounded window; page it yourself and concatenate the
+`result` arrays if the instance caps the page size.
 
 ### Producing the topic dump
 
@@ -218,5 +246,6 @@ use `kafka-avro-console-consumer` / `kafka-protobuf-console-consumer` in front o
 `cloud-source-legacy.json`, `cloud-source-v2.json` (has a `${offset}` pagination query, so it
 exits 2), `platform-sink.json`, `cloud-sink.json`. `selftest.py` translates all of them and
 asserts the mappings, the exit codes, that no Confluent key survives, that `compare()`
-classifies loss/stale/extra/duplicates correctly, and that `verify_cutover.py` pages and
-retries against a fake Table API on localhost. CI runs it from the repository root.
+classifies loss/stale/extra/duplicates correctly, that `verify_cutover.py` pages and
+retries against a fake Table API on localhost, and that `--instance-export` reaches the
+same verdicts from a saved response. CI runs it from the repository root.

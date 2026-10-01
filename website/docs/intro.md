@@ -1,7 +1,7 @@
 ---
 title: "Introduction"
 description: "Open-source, Table API-based ServiceNow connectors for Apache Kafka Connect."
-slug: /
+slug: "/"
 sidebar_position: 1
 ---
 

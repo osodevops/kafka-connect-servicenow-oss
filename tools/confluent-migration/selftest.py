@@ -11,7 +11,9 @@ Checks:
     --start-timestamp and --recommended-sink-defaults;
   * verify_cutover.compare() reports loss, stale versions, extras, duplicates and
     out-of-window rows correctly on synthetic data, and the CLI pages a fake Table API
-    served from localhost (with one 429 + Retry-After) and exits 0 / 1 / 3 as documented.
+    served from localhost (with one 429 + Retry-After) and exits 0 / 1 / 3 as documented;
+  * verify_cutover --instance-export compares against a saved Table API response with no
+    instance URL or credentials, in both the {"result": [...]} and bare-list shapes.
 """
 
 import http.server
@@ -269,6 +271,25 @@ def test_unknown_and_fallbacks():
         check(False, "unknown connector class raises")
     except SystemExit:
         check(True, "unknown connector class raises")
+    out, rep = confluent2oss.translate({
+        "connector.class": "io.confluent.connect.servicenow.ServiceNowSourceConnector",
+        "servicenow.url": "https://x.service-now.com", "servicenow.username": "u", "servicenow.password": "p",
+        "servicenow.table": "incident", "kafka.topic": "t",
+        "servicenow.ssl.keystore.path": "/k.jks", "servicenow.ssl.keystore.password": "kp",
+        "servicenow.ssl.key.password": "other", "value.subject.name.strategy": "TopicNameStrategy",
+        "key.subject.name.strategy": "TopicNameStrategy",
+    })
+    check(not rep.manual_notes, f"ssl.key.password and subject strategies are not MANUAL ({rep.manual_notes})")
+    dropped = "\n".join(t for level, t in rep.notes if level == "dropped")
+    check("servicenow.ssl.key.password" in dropped, "servicenow.ssl.key.password is DROPPED at the top level")
+    check("value.subject.name.strategy" in dropped and "key.subject.name.strategy" in dropped,
+          "Schema Registry subject strategies are DROPPED")
+    check(not any(k.endswith("subject.name.strategy") for k in out), "subject strategies not emitted")
+    out, rep = confluent2oss.translate({"connector.class": "ServiceNowSourceV2", "servicenow.url": "https://x",
+                                        "auth.type": "OAUTH2", "oauth2.client.id": "id", "oauth2.client.secret": "s",
+                                        "table1.name": "incident", "table1.topic": "t"})
+    check(any("snow.oauth.grant.type=password" in n for n in rep.review_notes), "OAUTH2 gets a REVIEW note on the grant choice")
+    check(not rep.manual_notes, "OAUTH2 alone is not MANUAL")
 
 
 def test_cli():
@@ -460,9 +481,65 @@ def test_verify_cli():
         server.shutdown()
 
 
+def test_verify_export():
+    print("verify_cutover CLI against an offline --instance-export")
+    rows = [(sid(i), f"2026-09-29 09:{i // 60:02d}:{i % 60:02d}", "1") for i in range(1, 301)]
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SNOW_")}
+    with tempfile.TemporaryDirectory() as tmp:
+        dump = os.path.join(tmp, "dump.tsv")
+        evidence = os.path.join(tmp, "evidence.json")
+        export = os.path.join(tmp, "export.json")
+        with open(dump, "w", encoding="utf-8") as f:
+            for s_, ts, m in rows:
+                f.write(f"{s_}\t{ts}\t{m}\n")
+        # Table API envelope, with one row in display-value shape and one junk row
+        result = [{"sys_id": s_, "sys_updated_on": ts, "sys_mod_count": m} for s_, ts, m in rows[:-1]]
+        last = rows[-1]
+        result.append({"sys_id": {"value": last[0], "display_value": last[0]},
+                       "sys_updated_on": {"value": last[1], "display_value": last[1]},
+                       "sys_mod_count": {"value": last[2], "display_value": last[2]}})
+        result.append({"sys_id": "not-a-sys-id"})
+        with open(export, "w", encoding="utf-8") as f:
+            json.dump({"result": result}, f)
+        common = ["--table", "incident", "--since", "2026-09-29 08:55:00", "--until", "2026-09-29 09:59:59",
+                  "--topic-dump", dump, "--evidence", evidence, "--quiet"]
+
+        proc = subprocess.run([sys.executable, os.path.join(HERE, "verify_cutover.py"), *common,
+                               "--instance-export", export], capture_output=True, text=True, env=env)
+        check(proc.returncode == 0, f"export + complete dump -> exit 0 without URL or credentials (got {proc.returncode}: {proc.stderr.strip()})")
+        report = json.load(open(evidence, encoding="utf-8"))
+        check(report["instance"]["source"] == "export" and report["instance"]["rows"] == 300, "evidence records the export source and row count")
+        check(report["instance"]["unparsableRows"] == 1 and report["instance"]["pages"] == 0, "junk export row counted, no pages fetched")
+        check(report["parameters"]["instanceUrl"] is None and report["parameters"]["instanceExport"] == "export.json",
+              "evidence names the export and no instance URL")
+        check(report["parameters"]["auth"] == "none", "no auth recorded for an offline run")
+
+        with open(export, "w", encoding="utf-8") as f:
+            json.dump(result[:-1], f)                       # bare list shape
+        with open(dump, "w", encoding="utf-8") as f:
+            for s_, ts, m in rows[:-2]:
+                f.write(f"{s_}\t{ts}\t{m}\n")
+        proc = subprocess.run([sys.executable, os.path.join(HERE, "verify_cutover.py"), *common,
+                               "--instance-export", export], capture_output=True, text=True, env=env)
+        report = json.load(open(evidence, encoding="utf-8"))
+        check(proc.returncode == 1 and report["missing"] == [sid(299), sid(300)],
+              f"bare-list export, two rows missing -> exit 1 (got {proc.returncode})")
+
+        with open(export, "w", encoding="utf-8") as f:
+            f.write('{"error": "nope"}')
+        proc = subprocess.run([sys.executable, os.path.join(HERE, "verify_cutover.py"), *common,
+                               "--instance-export", export], capture_output=True, text=True, env=env)
+        check(proc.returncode == 3 and "result" in proc.stderr, f"export without a result array -> exit 3 (got {proc.returncode})")
+
+        proc = subprocess.run([sys.executable, os.path.join(HERE, "verify_cutover.py"), *common],
+                              capture_output=True, text=True, env=env)
+        check(proc.returncode == 2 and "--instance-export" in proc.stderr, f"neither URL nor export -> usage error 2 (got {proc.returncode})")
+
+
 def main():
     for test in (test_platform_source, test_cloud_source_legacy, test_cloud_source_v2, test_platform_sink,
-                 test_cloud_sink, test_unknown_and_fallbacks, test_cli, test_compare, test_verify_cli):
+                 test_cloud_sink, test_unknown_and_fallbacks, test_cli, test_compare, test_verify_cli,
+                 test_verify_export):
         test()
     print()
     if FAILURES:

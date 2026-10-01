@@ -100,7 +100,6 @@ TABLE_SUFFIX_MAP = {
     "query.domain": "query.domain",
 }
 TABLE_SUFFIX_DROPPED = {
-    "servicenow.ssl.key.password": "snow-core unlocks the private key with snow.tls.keystore.password; re-key the keystore if the two passwords differ",
     "count.records": "OSS never runs a count query (sysparm_no_count=true)",
     "suppress.pagination.header": "OSS always suppresses the Link header",
     "request.parameters.separator": "OSS builds its own query string",
@@ -109,6 +108,7 @@ TABLE_SUFFIX_DROPPED = {
 # Properties with no OSS equivalent that are safe to drop.
 DROPPED = {
     "confluent.license": "no licence required (Apache-2.0)",
+    "servicenow.ssl.key.password": "snow-core unlocks the private key with snow.tls.keystore.password; re-key the keystore if the two passwords differ",
     "retry.backoff.policy": "OSS uses full-jitter exponential backoff and honours Retry-After",
     "retry.on.status.codes": "OSS classifies retryable statuses itself (429/408/425/5xx)",
     "servicenow.ssl.enabled": "TLS is used whenever snow.url is https://",
@@ -120,6 +120,8 @@ DROPPED = {
     "kafka.service.account.id": "Confluent Cloud platform setting",
     "schema.context.name": "Confluent Cloud Schema Registry setting; configure the converter instead",
     "sr.service.account.id": "Confluent Cloud Schema Registry setting",
+    "key.subject.name.strategy": "Confluent Cloud Schema Registry setting; set key.converter.key.subject.name.strategy on the converter if needed",
+    "value.subject.name.strategy": "Confluent Cloud Schema Registry setting; set value.converter.value.subject.name.strategy on the converter if needed",
     "auto.restart.on.user.error": "Confluent Cloud platform setting",
     "csfle.onFailure": "CSFLE is not supported by the OSS suite",
     "auto.register.schemas": "set value.converter.auto.register.schemas on the converter if needed",
@@ -279,6 +281,9 @@ def handle_connection(key, value, ctx):
             out["snow.auth.type"] = "oauth2"
             out["snow.oauth.grant.type"] = "client_credentials"
             rep.add("value", "auth.type: OAUTH2 -> snow.auth.type=oauth2, snow.oauth.grant.type=client_credentials")
+            rep.review("snow.oauth.grant.type=client_credentials assumes the instance has inbound client "
+                       "credentials enabled (off by default); otherwise set snow.oauth.grant.type=password "
+                       "and add snow.auth.username/password")
         else:
             rep.manual(f"auth.type={value!r} is not BASIC or OAUTH2; set snow.auth.type by hand")
         return True

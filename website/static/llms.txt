@@ -12,6 +12,7 @@
 
 ## Concepts & Operations
 - [Architecture](https://servicenowkafkaconnector.com/concepts/architecture)
+- [ServiceNow to Kafka integration](https://servicenowkafkaconnector.com/servicenow-kafka-integration): what the Table API can and cannot do, why keyset polling, when the event bridge is needed
 - [Delivery Semantics](https://servicenowkafkaconnector.com/concepts/delivery-semantics): at-least-once, dedup bound, ordering
 - [Offsets & Recovery](https://servicenowkafkaconnector.com/concepts/offsets-and-recovery): cursor tuples, query fingerprints, offset resets
 - [Rate Limits](https://servicenowkafkaconnector.com/concepts/rate-limits): Retry-After, backoff, concurrency caps

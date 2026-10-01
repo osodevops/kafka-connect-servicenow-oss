@@ -12,3 +12,6 @@ dependency-reduced-pom.xml
 
 # Local sales material (proposals, client correspondence) — never commit
 sales/
+
+# Python bytecode from the migration tooling self-test
+__pycache__/

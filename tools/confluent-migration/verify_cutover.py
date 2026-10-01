@@ -13,6 +13,10 @@ ServiceNow side (read-only, Table API GET):
   --since "YYYY-MM-DD HH:MM:SS"    window start, UTC (the OSS start.timestamp you used)
   --until "YYYY-MM-DD HH:MM:SS"    window end, UTC (default: now; take the dump after it)
   --query "active=true"            optional base filter (the connector's snow.table.<alias>.query)
+  --instance-export FILE           offline alternative to the live scan: a saved Table API response
+                                   ({"result": [...]} or a bare list of rows) for the same window,
+                                   each row carrying sys_id, the timestamp field and sys_mod_count;
+                                   no instance URL or credentials are needed with it
 
 Kafka side:
   --topic-dump FILE   TSV, one line per record: sys_id<TAB>sys_updated_on[<TAB>sys_mod_count]
@@ -29,7 +33,8 @@ Example:
       --topic-dump dump.tsv --evidence evidence-incident.json
 
 Exit codes: 0 = PASS (no missing rows), 1 = FAIL (loss found), 2 = usage error,
-3 = ServiceNow request failure. Credentials are never printed or written to the report.
+3 = ServiceNow request failure or unreadable export. Credentials are never printed or
+written to the report.
 """
 
 import argparse
@@ -171,6 +176,43 @@ def load_dump(path):
     return rows, skipped
 
 
+def load_export(path, ts_field):
+    """Reads a saved Table API response ({"result": [...]} or a bare list of row objects).
+
+    Returns (rows, skipped_row_count) in the same (sys_id, timestamp, sys_mod_count) shape as
+    fetch_rows(), so the comparison is identical to a live scan. Rows without a well-formed
+    sys_id are skipped and counted. Display-value exports ({"value": ..., "display_value": ...}
+    per field) are unwrapped.
+    """
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    if isinstance(doc, dict):
+        result = doc.get("result")
+        if result is None:
+            raise RequestFailure(f"{path}: expected a Table API response with a 'result' array")
+    else:
+        result = doc
+    if not isinstance(result, list):
+        raise RequestFailure(f"{path}: 'result' must be an array of rows")
+
+    def unwrap(value):
+        if isinstance(value, dict) and "value" in value:
+            return value["value"]
+        return value
+
+    rows, skipped = [], 0
+    for row in result:
+        if not isinstance(row, dict):
+            skipped += 1
+            continue
+        sys_id = str(unwrap(row.get("sys_id")) or "").strip()
+        if not SYS_ID_RE.match(sys_id):
+            skipped += 1
+            continue
+        rows.append((sys_id, unwrap(row.get(ts_field)), unwrap(row.get("sys_mod_count"))))
+    return rows, skipped
+
+
 def build_query(base_query, ts_field, since, until):
     parts = [base_query] if base_query else []
     parts.append(f"{ts_field}>={since}")
@@ -265,7 +307,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--table", required=True, help="ServiceNow table or view name")
-    parser.add_argument("--instance-url", required=True, help="https://<instance>.service-now.com")
+    parser.add_argument("--instance-url", help="https://<instance>.service-now.com (required unless --instance-export is given)")
+    parser.add_argument("--instance-export", metavar="FILE",
+                        help="offline alternative to the live scan: a saved Table API JSON response for the window")
     parser.add_argument("--username", help="Basic auth user (or SNOW_USERNAME)")
     parser.add_argument("--password", help="Basic auth password (or SNOW_PASSWORD, preferred)")
     parser.add_argument("--bearer-token", help="OAuth access token (or SNOW_TOKEN)")
@@ -286,32 +330,47 @@ def main(argv=None):
 
     if not TABLE_RE.match(args.table):
         parser.error("--table must match ^[a-z0-9_]+$")
-    if not args.instance_url.lower().startswith(("https://", "http://")):
+    offline = args.instance_export is not None
+    if not offline and not args.instance_url:
+        parser.error("provide --instance-url (live scan) or --instance-export FILE (offline)")
+    if args.instance_url and not args.instance_url.lower().startswith(("https://", "http://")):
         parser.error("--instance-url must start with https:// (or http:// for the fake)")
     since = parse_timestamp(args.since, "--since")
     until = parse_timestamp(args.until, "--until") if args.until else \
         datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     if until < since:
         parser.error("--until is before --since")
-    auth_header, auth_kind = auth_header_from(args)
-    if not auth_header:
+    auth_header, auth_kind = (None, "none") if offline else auth_header_from(args)
+    if not offline and not auth_header:
         parser.error("provide --username and --password (or SNOW_USERNAME/SNOW_PASSWORD), or --bearer-token")
 
     log = (lambda *_: None) if args.quiet else (lambda msg: print(msg, file=sys.stderr))
     query = build_query(args.query, args.timestamp_field, since, until)
-    log(f"instance : {redact(args.instance_url)} table={args.table} auth={auth_kind}")
+    if offline:
+        log(f"export   : {args.instance_export} table={args.table}")
+    else:
+        log(f"instance : {redact(args.instance_url)} table={args.table} auth={auth_kind}")
     log(f"query    : {query}")
 
     dump_rows, skipped = load_dump(args.topic_dump)
     log(f"dump     : {len(dump_rows)} records from {args.topic_dump} ({skipped} unparsable line(s) skipped)")
 
     started = datetime.now(timezone.utc)
+    export_skipped = 0
     try:
-        instance_rows, pages = fetch_rows(args.instance_url, args.table, auth_header, query,
-                                          args.timestamp_field, args.page_size, args.timeout,
-                                          args.max_attempts, log)
+        if offline:
+            instance_rows, export_skipped = load_export(args.instance_export, args.timestamp_field)
+            pages = 0
+            log(f"export   : {len(instance_rows)} rows ({export_skipped} row(s) without a sys_id skipped)")
+        else:
+            instance_rows, pages = fetch_rows(args.instance_url, args.table, auth_header, query,
+                                              args.timestamp_field, args.page_size, args.timeout,
+                                              args.max_attempts, log)
     except RequestFailure as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
+        return 3
+    except (OSError, ValueError) as exc:
+        print(f"FAIL: cannot read {args.instance_export}: {exc}", file=sys.stderr)
         return 3
 
     result = compare(instance_rows, dump_rows, since=since, until=until)
@@ -324,7 +383,8 @@ def main(argv=None):
         "schemaVersion": 1,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "parameters": {
-            "instanceUrl": redact(args.instance_url),
+            "instanceUrl": redact(args.instance_url) if args.instance_url else None,
+            "instanceExport": os.path.basename(args.instance_export) if offline else None,
             "table": args.table,
             "timestampField": args.timestamp_field,
             "since": since,
@@ -336,8 +396,10 @@ def main(argv=None):
             "auth": auth_kind,
         },
         "instance": {
+            "source": "export" if offline else "live",
             "rows": result["instance_rows"],
             "pages": pages,
+            "unparsableRows": export_skipped,
             "scanSeconds": round((datetime.now(timezone.utc) - started).total_seconds(), 3),
             "sysIdSetSha256": result["instance_sha256"],
         },
@@ -362,6 +424,7 @@ def main(argv=None):
             "duplicates are expected across an at-least-once cutover; consumers dedupe on (sys_id, sys_updated_on, sys_mod_count)",
             "extra rows usually come from records the dump captured before --since or from rows since deleted in ServiceNow",
             "the integration user must be in the UTC timezone for the encoded-query timestamps to line up",
+            "with --instance-export the instance side is whatever the export contains; take it with the same window and base query",
         ],
     }
     with open(args.evidence, "w", encoding="utf-8") as f:
