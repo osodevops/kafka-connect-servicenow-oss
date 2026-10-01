@@ -66,6 +66,7 @@ jobs:
       # release-please bumps every module POM; make sure none was left behind.
       - name: Verify every reactor module is at the release version
         run: |
+          # shellcheck disable=SC2016  # ${project.*} are Maven expressions, not shell
           mvn -q --batch-mode --no-transfer-progress \
             org.codehaus.mojo:exec-maven-plugin:3.5.0:exec \
             -Dexec.executable=echo -Dexec.args='${project.artifactId} ${project.version}' \
@@ -115,7 +116,7 @@ jobs:
       # produced by the release profile (target/bom.json).
       - name: Checksums and SBOM
         run: |
-          for z in $(find . -path '*/target/*-kafka-connect-plugin.zip'); do
+          find . -path '*/target/*-kafka-connect-plugin.zip' -print0 | while IFS= read -r -d '' z; do
             (cd "$(dirname "$z")" && sha256sum "$(basename "$z")" > "$(basename "$z").sha256")
           done
           cp target/bom.json "target/kafka-connect-servicenow-${{ needs.validate.outputs.version }}-bom.json"
