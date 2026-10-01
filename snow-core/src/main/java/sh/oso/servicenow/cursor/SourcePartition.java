@@ -1,5 +1,7 @@
 package sh.oso.servicenow.cursor;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +29,9 @@ public final class SourcePartition {
         m.put(TABLE, Objects.requireNonNull(table, "table"));
         m.put(QUERY_FINGERPRINT, Objects.requireNonNull(fingerprint, "fingerprint"));
         m.put(TIMESTAMP_FIELD, Objects.requireNonNull(timestampField, "timestampField"));
-        return Map.copyOf(m);
+        // Connect looks offsets up by the JSON bytes of the partition map, re-serialised from a
+        // HashMap it deserialised itself. Map.copyOf iterates in a per-JVM salted order, so the
+        // stored key would never match after a restart; a HashMap iterates like Connect's own.
+        return Collections.unmodifiableMap(new HashMap<>(m));
     }
 }

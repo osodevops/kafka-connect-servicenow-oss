@@ -1,6 +1,8 @@
 package sh.oso.servicenow.source;
 
 import java.time.Clock;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -64,7 +66,8 @@ final class SourceRecordFactory {
             Clock clock) {
         this.spec = Objects.requireNonNull(spec, "spec");
         this.instanceHost = Objects.requireNonNull(instanceHost, "instanceHost");
-        this.partition = Map.copyOf(partition);
+        // HashMap, not Map.copyOf: see SourcePartition for the offset-key ordering contract.
+        this.partition = Collections.unmodifiableMap(new HashMap<>(partition));
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.envelope = envelope;
         this.clock = clock == null ? Clock.systemUTC() : clock;
