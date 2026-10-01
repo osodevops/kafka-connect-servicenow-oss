@@ -9,6 +9,7 @@
     "snow.auth.username": "connect",
     "snow.auth.password": "secret",
     "snow.sink.table": "incident",
+    "snow.sink.unknown.field.behavior": "passthrough",
     "snow.sink.operation.mode": "key_value",
     "snow.sink.update.method": "PATCH",
     "snow.sink.reporter.bootstrap.servers": "kafka:19092",
