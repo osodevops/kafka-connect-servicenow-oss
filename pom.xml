@@ -70,7 +70,7 @@
     <!-- per-module minimum line coverage; snow-core raises it -->
     <jacoco.line.minimum>0.60</jacoco.line.minimum>
     <spotless.version>2.43.0</spotless.version>
-    <google-java-format.version>1.22.0</google-java-format.version>
+    <google-java-format.version>1.36.1</google-java-format.version>
     <enforcer.version>3.5.0</enforcer.version>
     <cyclonedx.version>2.9.1</cyclonedx.version>
 
