@@ -54,6 +54,14 @@ architecture and evidence standard as the Salesforce connector programme
   `snow.sink.reporter.bootstrap.servers`.
 - The typed schema mode ships with an explicit field mapping only; the dictionary snapshot
   is deferred. There is no cap on the number of tables (five is the CI-tested profile).
+- `snow.table.<alias>.display.value=true` is requested as `sysparm_display_value=all` on the
+  wire and the display value is taken for every field except the cursor fields (`sys_id`, the
+  timestamp field, `sys_mod_count`), which keep raw values so the cursor stays parseable.
+- `snow.sink.create.ambiguous.behavior=correlation_lookup` looks the correlation value up before
+  every create as well as after an ambiguous one, so redelivered creates after a task restart
+  become updates. Cost: one GET per create in that mode.
+- The source re-reads the overlap window at every streaming sweep, not only after a restart,
+  and suppresses the re-read versions from the dedup cache.
 - Exactly-once (KIP-618) is declared unsupported; delivery is at-least-once with a
   documented duplicate bound.
 

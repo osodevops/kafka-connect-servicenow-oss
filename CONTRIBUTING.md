@@ -5,15 +5,15 @@ Thanks for your interest in improving kafka-connect-servicenow!
 ## Getting started
 
 - **Build**: JDK 17+ and Maven 3.6.3+, then `mvn clean verify` (add `-DskipE2E` if you don't have Docker).
-- **Local dev loop**: everything runs against a local fake ServiceNow — no instance needed. See the
+- **Local dev loop**: everything runs against a local fake ServiceNow; no instance needed. See the
   [local testing guide](https://servicenowkafkaconnector.com/development/local-testing).
 - **Docs site**: `cd website && npm install && npm start`.
 
 ## Pull requests
 
 1. Fork, branch from `main`, keep changes focused.
-2. Add or update tests — behaviour changes need coverage against the fake harness.
-3. Use [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `chore:`) —
+2. Add or update tests; behaviour changes need coverage against the fake harness.
+3. Use [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `chore:`);
    release-please derives versions and the changelog from them. Breaking changes use `feat!:` or a
    `BREAKING CHANGE:` footer.
 4. `mvn clean verify` must pass; CI runs the same plus the docker e2e tests.
@@ -27,5 +27,5 @@ Do not copy code, configuration strings, or documentation text from Confluent's 
 
 ## Reporting issues
 
-Use the issue templates. For security vulnerabilities, **do not open a public issue** — see
+Use the issue templates. For security vulnerabilities, **do not open a public issue**; see
 [SECURITY.md](SECURITY.md).
