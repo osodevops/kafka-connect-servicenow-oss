@@ -66,16 +66,24 @@ jobs:
       # release-please bumps every module POM; make sure none was left behind.
       - name: Verify every reactor module is at the release version
         run: |
-          # shellcheck disable=SC2016  # ${project.*} are Maven expressions, not shell
-          mvn -q --batch-mode --no-transfer-progress \
-            org.codehaus.mojo:exec-maven-plugin:3.5.0:exec \
-            -Dexec.executable=echo -Dexec.args='${project.artifactId} ${project.version}' \
-            > /tmp/reactor-versions.txt
-          cat /tmp/reactor-versions.txt
-          if grep -v " ${{ steps.resolve.outputs.version }}$" /tmp/reactor-versions.txt; then
-            echo "One or more modules are not at ${{ steps.resolve.outputs.version }}" >&2
-            exit 1
-          fi
+          python3 - "${{ steps.resolve.outputs.version }}" <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          want = sys.argv[1]
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          bad = []
+          for pom in sorted(glob.glob("**/pom.xml", recursive=True)):
+              if "/target/" in pom or "node_modules" in pom:
+                  continue
+              root = ET.parse(pom).getroot()
+              for xpath, label in (("m:version", "version"), ("m:parent/m:version", "parent.version")):
+                  node = root.find(xpath, ns)
+                  if node is not None and (node.text or "").strip() != want:
+                      bad.append(f"{pom}: {label}={node.text.strip()}")
+              print(f"{pom}: ok")
+          if bad:
+              print("\n".join(bad), file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - name: Build and test
         run: mvn clean verify --batch-mode --no-transfer-progress
