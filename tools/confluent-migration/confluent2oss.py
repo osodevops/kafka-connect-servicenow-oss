@@ -72,7 +72,6 @@ CONNECTION_MAP = {
     "servicenow.ssl.keystore.location": "snow.tls.keystore.path",
     "servicenow.ssl.keystorefile": "snow.tls.keystore.path",
     "servicenow.ssl.keystore.password": "snow.tls.keystore.password",
-    "servicenow.ssl.key.password": "snow.tls.key.password",
     "servicenow.ssl.truststore.path": "snow.tls.truststore.path",
     "servicenow.ssl.truststore.location": "snow.tls.truststore.path",
     "servicenow.ssl.truststorefile": "snow.tls.truststore.path",
@@ -101,6 +100,7 @@ TABLE_SUFFIX_MAP = {
     "query.domain": "query.domain",
 }
 TABLE_SUFFIX_DROPPED = {
+    "servicenow.ssl.key.password": "snow-core unlocks the private key with snow.tls.keystore.password; re-key the keystore if the two passwords differ",
     "count.records": "OSS never runs a count query (sysparm_no_count=true)",
     "suppress.pagination.header": "OSS always suppresses the Link header",
     "request.parameters.separator": "OSS builds its own query string",

@@ -76,7 +76,7 @@ to change it) so the two connectors can coexist in one cluster during the cutove
 | `proxy.url` | `snow.http.proxy.url` | |
 | `servicenow.ssl.keystore.path`, `.keystore.password` | `snow.tls.keystore.path`, `snow.tls.keystore.password` | Cloud spelling `servicenow.ssl.keystorefile` also accepted |
 | `servicenow.ssl.truststore.path`, `.truststore.password` | `snow.tls.truststore.path`, `snow.tls.truststore.password` | Cloud spelling `servicenow.ssl.truststorefile` also accepted |
-| `servicenow.ssl.key.password` | `snow.tls.key.password` | |
+| `servicenow.ssl.key.password` | DROPPED | `snow-core` unlocks the private key with `snow.tls.keystore.password`; re-key the keystore if the two passwords differ |
 | `output.data.format=JSON` (Cloud) | `key.converter=StringConverter`, `value.converter=JsonConverter`, `value.converter.schemas.enable=false` | `AVRO`, `JSON_SR`, `PROTOBUF` are MANUAL (Schema Registry converter) |
 
 ### Cloud source V2
