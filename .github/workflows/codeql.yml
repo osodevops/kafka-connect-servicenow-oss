@@ -20,7 +20,7 @@ jobs:
         language: [java, actions]
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
       - if: matrix.language == 'java'
@@ -31,4 +31,4 @@ jobs:
           cache: maven
       - if: matrix.language == 'java'
         run: mvn -B clean package -DskipTests -DskipE2E --no-transfer-progress
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
