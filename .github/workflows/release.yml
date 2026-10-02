@@ -131,7 +131,7 @@ jobs:
           find . -path '*/target/*-kafka-connect-plugin.zip*' -o -path './target/*-bom.json' | sort
 
       - name: Attach connector plugin ZIPs, checksums and SBOM to the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.validate.outputs.tag_name }}
           files: |
