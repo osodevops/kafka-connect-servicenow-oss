@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/osodevops/kafka-connect-servicenow-oss/compare/v0.1.0...v0.1.1) (2026-10-02)
+
+
+### Documentation
+
+* parity pass against the Salesforce site and migration tooling ([653792e](https://github.com/osodevops/kafka-connect-servicenow-oss/commit/653792e2cde9e1ce39956b02390e461f851a7104))
+* use the fake ServiceNow's built-in credentials in the quickstart ([e06e2fd](https://github.com/osodevops/kafka-connect-servicenow-oss/commit/e06e2fd1c1a200b5d15b8c9914a8c4efc1cac70d))
+
 ## [0.1.0](https://github.com/osodevops/kafka-connect-servicenow-oss/compare/v0.0.1...v0.1.0) (2026-10-01)
 
 
