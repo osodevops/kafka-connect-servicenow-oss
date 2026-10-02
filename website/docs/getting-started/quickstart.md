@@ -42,8 +42,11 @@ The fake listens on `localhost:8090` and comes seeded with a few `incident` rows
 speaks the real Table API, so you can query it exactly as you would an instance:
 
 ```bash
-curl -s -u admin:admin 'http://localhost:8090/api/now/table/incident?sysparm_limit=2' | jq
+curl -s -u connect:secret 'http://localhost:8090/api/now/table/incident?sysparm_limit=2' | jq
 ```
+
+The fake accepts Basic auth with the built-in user `connect` and password `secret`, the same
+credentials the `*-fake.json` connector configs use.
 
 ## 3. Register the source connector
 
@@ -92,7 +95,7 @@ The key is the row's `sys_id`; the value is the row as the Table API returned it
 Create another incident in the fake and it appears within the poll interval:
 
 ```bash
-curl -s -u admin:admin -X POST -H 'Content-Type: application/json' \
+curl -s -u connect:secret -X POST -H 'Content-Type: application/json' \
   http://localhost:8090/api/now/table/incident \
   -d '{"short_description":"Printer on fire","urgency":"1"}' | jq .result.sys_id
 ```
@@ -119,7 +122,7 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-producer.sh \
 Then see it in the fake:
 
 ```bash
-curl -s -u admin:admin \
+curl -s -u connect:secret \
   'http://localhost:8090/api/now/table/incident?sysparm_query=short_descriptionLIKEKafka' | jq
 ```
 
