@@ -64,7 +64,7 @@
     <wiremock.version>3.13.2</wiremock.version>
     <awaitility.version>4.3.0</awaitility.version>
     <testcontainers.version>2.0.5</testcontainers.version>
-    <logback.version>1.6.4</logback.version>
+    <logback.version>1.6.5</logback.version>
 
     <jacoco.version>0.8.15</jacoco.version>
     <!-- per-module minimum line coverage; snow-core raises it -->
